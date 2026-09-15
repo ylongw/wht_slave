@@ -26,6 +26,15 @@
                 "CMAKE_PROJECT_NAME": "wht_slave",
                 "CMAKE_BUILD_TYPE": "Release"
             }
+        },
+        {
+            "name": "Debug-EXAM-INSTRUMENTS",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_PROJECT_NAME": "wht_slave",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "WHT_APP_RUN_MODE": "6"
+            }
         }
     ],
     "buildPresets": [
@@ -36,6 +45,10 @@
         {
             "name": "Release",
             "configurePreset": "Release"
+        },
+        {
+            "name": "Debug-EXAM-INSTRUMENTS",
+            "configurePreset": "Debug-EXAM-INSTRUMENTS"
         }
     ]
 }

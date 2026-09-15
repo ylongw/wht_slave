@@ -49,6 +49,12 @@ else()
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC RS232_DEBUG)
 endif()
 
+# Handle WHT_APP_RUN_MODE compile definition
+if(DEFINED WHT_APP_RUN_MODE)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC WHT_APP_RUN_MODE=${WHT_APP_RUN_MODE})
+    message(STATUS "WHT_APP_RUN_MODE set to: ${WHT_APP_RUN_MODE}")
+endif()
+
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 add_subdirectory(User)
@@ -57,6 +63,7 @@ add_subdirectory(FreeRTOScpp)
 add_subdirectory(protocol)
 add_subdirectory(factory_test)
 add_subdirectory(bootloader)
+add_subdirectory(exam_instruments)
 
 # Link directories setup
 target_link_directories(

@@ -33,6 +33,12 @@
 #include "uart_cmd_handler.h"
 #include "usart.h"
 
+#ifdef WHT_APP_RUN_MODE
+#if WHT_APP_RUN_MODE == 6
+#include "exam_instruments.h"
+#endif
+#endif
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -159,6 +165,19 @@ void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
     osDelay(50);    // 等待系统稳定
+
+#ifdef WHT_APP_RUN_MODE
+#if WHT_APP_RUN_MODE == 6
+    // Exam instruments mode - directly enter without factory test check
+    exam_instruments_init();
+    exam_instruments_run();
+    
+    // Should never reach here
+    for (;;) {
+        osDelay(1000);
+    }
+#endif
+#endif
 
     // 阻塞式检测工厂测试入口指令（1秒）
     if (factory_test_blocking_check_entry()) {

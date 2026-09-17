@@ -27,21 +27,31 @@
 
 /* Private defines -----------------------------------------------------------*/
 #define EXAM_CMD_BUFFER_SIZE    32
-#define EXAM_UART               huart7      // RS485 UART
+
+/* TTL UART (3.3V logic) - UART4 on PA0/PA1 */
+#define EXAM_TTL_UART           huart4      // DEBUG_UART, TTL levels
+
+/* RS-232 UART - USART1 on PA9/PA10 */
+#define EXAM_RS232_UART         huart1      // RS-232 levels
 
 /* Square wave output pin - using LED1 (PG9) which is easily accessible */
 #define EXAM_SQUARE_WAVE_PORT   GPIOG
 #define EXAM_SQUARE_WAVE_PIN    GPIO_PIN_9
 
 /* Private variables ---------------------------------------------------------*/
-static char cmd_buffer[EXAM_CMD_BUFFER_SIZE];
-static uint8_t cmd_index = 0;
-static uint8_t uart_rx_byte = 0;
+static char cmd_buffer_ttl[EXAM_CMD_BUFFER_SIZE];
+static uint8_t cmd_index_ttl = 0;
+static uint8_t uart_rx_byte_ttl = 0;
+
+static char cmd_buffer_rs232[EXAM_CMD_BUFFER_SIZE];
+static uint8_t cmd_index_rs232 = 0;
+static uint8_t uart_rx_byte_rs232 = 0;
 
 /* Private function prototypes -----------------------------------------------*/
 static void exam_print_boot_message(void);
-static void exam_process_command(void);
-static void exam_uart_send_string(const char* str);
+static void exam_process_command_ttl(void);
+static void exam_process_command_rs232(void);
+static void exam_uart_send_string(UART_HandleTypeDef *huart, const char* str);
 static void exam_configure_square_wave_timer(void);
 
 /* Public functions ----------------------------------------------------------*/
@@ -51,7 +61,7 @@ static void exam_configure_square_wave_timer(void);
  * @retval None
  */
 void exam_instruments_init(void) {
-    // Print boot message
+    // Print boot message on both UARTs
     exam_print_boot_message();
     
     // Configure square wave output GPIO
@@ -68,8 +78,9 @@ void exam_instruments_init(void) {
     // Configure TIM2 for 1 kHz square wave
     exam_configure_square_wave_timer();
     
-    // Start UART receive interrupt
-    HAL_UART_Receive_IT(&EXAM_UART, &uart_rx_byte, 1);
+    // Start UART receive interrupt for both UARTs
+    HAL_UART_Receive_IT(&EXAM_TTL_UART, &uart_rx_byte_ttl, 1);
+    HAL_UART_Receive_IT(&EXAM_RS232_UART, &uart_rx_byte_rs232, 1);
 }
 
 /**
@@ -87,82 +98,113 @@ void exam_instruments_run(void) {
 /* Private functions ---------------------------------------------------------*/
 
 /**
- * @brief  Print boot message over UART
+ * @brief  Print boot message over both UARTs
  * @retval None
  */
 static void exam_print_boot_message(void) {
     char msg[128];
     
-    // Enable RS485 transmit
-    HAL_GPIO_WritePin(RS485_CTRL_GPIO_Port, RS485_CTRL_Pin, GPIO_PIN_SET);
-    HAL_Delay(1);
-    
-    // Build boot message with version and build date
+    // Build boot messages
     snprintf(msg, sizeof(msg), "\r\n=== BOOT OK ===\r\n");
-    exam_uart_send_string(msg);
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
     
     snprintf(msg, sizeof(msg), "Version: %s\r\n", EXAM_VERSION_STRING);
-    exam_uart_send_string(msg);
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
     
     snprintf(msg, sizeof(msg), "Build: %s %s\r\n", __DATE__, __TIME__);
-    exam_uart_send_string(msg);
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
     
     snprintf(msg, sizeof(msg), "FW Ver: %d.%d.%d\r\n", 
              FIRMWARE_VERSION_MAJOR, FIRMWARE_VERSION_MINOR, FIRMWARE_VERSION_PATCH);
-    exam_uart_send_string(msg);
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
     
     snprintf(msg, sizeof(msg), "Square Wave: 1 kHz on LED1 (PG9)\r\n");
-    exam_uart_send_string(msg);
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
+    
+    snprintf(msg, sizeof(msg), "TTL UART: UART4 (PA0/PA1) 115200 8N1\r\n");
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
+    
+    snprintf(msg, sizeof(msg), "RS-232: USART1 (PA9/PA10) 115200 8N1\r\n");
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
     
     snprintf(msg, sizeof(msg), "Ready for commands (PING)\r\n");
-    exam_uart_send_string(msg);
-    
-    // Switch back to receive mode
-    HAL_Delay(1);
-    HAL_GPIO_WritePin(RS485_CTRL_GPIO_Port, RS485_CTRL_Pin, GPIO_PIN_RESET);
+    exam_uart_send_string(&EXAM_TTL_UART, msg);
+    exam_uart_send_string(&EXAM_RS232_UART, msg);
+    HAL_Delay(5);
 }
 
 /**
  * @brief  Send string over UART
+ * @param  huart: UART handle
  * @param  str: Null-terminated string to send
  * @retval None
  */
-static void exam_uart_send_string(const char* str) {
-    HAL_UART_Transmit(&EXAM_UART, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
+static void exam_uart_send_string(UART_HandleTypeDef *huart, const char* str) {
+    HAL_UART_Transmit(huart, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
 }
 
 /**
- * @brief  Process received command
+ * @brief  Process received command from TTL UART
  * @retval None
  */
-static void exam_process_command(void) {
+static void exam_process_command_ttl(void) {
     // Null-terminate the command
-    cmd_buffer[cmd_index] = '\0';
+    cmd_buffer_ttl[cmd_index_ttl] = '\0';
     
     // Trim trailing CR/LF
-    while (cmd_index > 0 && (cmd_buffer[cmd_index - 1] == '\r' || 
-                              cmd_buffer[cmd_index - 1] == '\n')) {
-        cmd_index--;
-        cmd_buffer[cmd_index] = '\0';
+    while (cmd_index_ttl > 0 && (cmd_buffer_ttl[cmd_index_ttl - 1] == '\r' || 
+                                  cmd_buffer_ttl[cmd_index_ttl - 1] == '\n')) {
+        cmd_index_ttl--;
+        cmd_buffer_ttl[cmd_index_ttl] = '\0';
     }
     
     // Check for PING command
-    if (strcmp(cmd_buffer, "PING") == 0 || strcmp(cmd_buffer, "ping") == 0) {
-        // Enable transmit
-        HAL_GPIO_WritePin(RS485_CTRL_GPIO_Port, RS485_CTRL_Pin, GPIO_PIN_SET);
-        HAL_Delay(1);
-        
-        // Send PONG response
-        exam_uart_send_string("PONG\r\n");
-        
-        // Switch back to receive
-        HAL_Delay(1);
-        HAL_GPIO_WritePin(RS485_CTRL_GPIO_Port, RS485_CTRL_Pin, GPIO_PIN_RESET);
+    if (strcmp(cmd_buffer_ttl, "PING") == 0 || strcmp(cmd_buffer_ttl, "ping") == 0) {
+        exam_uart_send_string(&EXAM_TTL_UART, "PONG\r\n");
     }
     
     // Reset command buffer
-    cmd_index = 0;
-    memset(cmd_buffer, 0, sizeof(cmd_buffer));
+    cmd_index_ttl = 0;
+    memset(cmd_buffer_ttl, 0, sizeof(cmd_buffer_ttl));
+}
+
+/**
+ * @brief  Process received command from RS-232 UART
+ * @retval None
+ */
+static void exam_process_command_rs232(void) {
+    // Null-terminate the command
+    cmd_buffer_rs232[cmd_index_rs232] = '\0';
+    
+    // Trim trailing CR/LF
+    while (cmd_index_rs232 > 0 && (cmd_buffer_rs232[cmd_index_rs232 - 1] == '\r' || 
+                                    cmd_buffer_rs232[cmd_index_rs232 - 1] == '\n')) {
+        cmd_index_rs232--;
+        cmd_buffer_rs232[cmd_index_rs232] = '\0';
+    }
+    
+    // Check for PING command
+    if (strcmp(cmd_buffer_rs232, "PING") == 0 || strcmp(cmd_buffer_rs232, "ping") == 0) {
+        exam_uart_send_string(&EXAM_RS232_UART, "PONG\r\n");
+    }
+    
+    // Reset command buffer
+    cmd_index_rs232 = 0;
+    memset(cmd_buffer_rs232, 0, sizeof(cmd_buffer_rs232));
 }
 
 /**
@@ -208,22 +250,39 @@ static void exam_configure_square_wave_timer(void) {
 #ifdef WHT_APP_RUN_MODE
 #if WHT_APP_RUN_MODE == 6
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance == EXAM_UART.Instance) {
-        // Store received byte
-        if (cmd_index < EXAM_CMD_BUFFER_SIZE - 1) {
-            cmd_buffer[cmd_index++] = uart_rx_byte;
+    // Handle TTL UART (UART4)
+    if (huart->Instance == EXAM_TTL_UART.Instance) {
+        if (cmd_index_ttl < EXAM_CMD_BUFFER_SIZE - 1) {
+            cmd_buffer_ttl[cmd_index_ttl++] = uart_rx_byte_ttl;
             
             // Check for command termination (CR or LF)
-            if (uart_rx_byte == '\r' || uart_rx_byte == '\n') {
-                exam_process_command();
+            if (uart_rx_byte_ttl == '\r' || uart_rx_byte_ttl == '\n') {
+                exam_process_command_ttl();
             }
         } else {
             // Buffer overflow, reset
-            cmd_index = 0;
+            cmd_index_ttl = 0;
         }
         
         // Restart receive
-        HAL_UART_Receive_IT(&EXAM_UART, &uart_rx_byte, 1);
+        HAL_UART_Receive_IT(&EXAM_TTL_UART, &uart_rx_byte_ttl, 1);
+    }
+    // Handle RS-232 UART (USART1)
+    else if (huart->Instance == EXAM_RS232_UART.Instance) {
+        if (cmd_index_rs232 < EXAM_CMD_BUFFER_SIZE - 1) {
+            cmd_buffer_rs232[cmd_index_rs232++] = uart_rx_byte_rs232;
+            
+            // Check for command termination (CR or LF)
+            if (uart_rx_byte_rs232 == '\r' || uart_rx_byte_rs232 == '\n') {
+                exam_process_command_rs232();
+            }
+        } else {
+            // Buffer overflow, reset
+            cmd_index_rs232 = 0;
+        }
+        
+        // Restart receive
+        HAL_UART_Receive_IT(&EXAM_RS232_UART, &uart_rx_byte_rs232, 1);
     }
 }
 #endif

@@ -243,12 +243,14 @@ static void exam_configure_square_wave_timer(void) {
 }
 
 /**
- * @brief  UART receive complete callback
+ * @brief  UART receive complete callback - Exam mode specific
  * @param  huart: UART handle
  * @retval None
  */
 #ifdef WHT_APP_RUN_MODE
 #if WHT_APP_RUN_MODE == 6
+
+// In exam mode, we override the callback completely
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     // Handle TTL UART (UART4)
     if (huart->Instance == EXAM_TTL_UART.Instance) {
@@ -285,5 +287,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
         HAL_UART_Receive_IT(&EXAM_RS232_UART, &uart_rx_byte_rs232, 1);
     }
 }
+
 #endif
 #endif

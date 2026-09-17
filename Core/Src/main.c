@@ -145,8 +145,11 @@ int main(void)
     // 初始化工厂测试模式
     factory_test_init();
     // 初始化UART命令处理系统
+#ifndef WHT_APP_RUN_MODE
     uart_cmd_handler_init();
-
+#elif WHT_APP_RUN_MODE != 6
+    uart_cmd_handler_init();
+#endif
   /* USER CODE END 2 */
 
   /* Init scheduler */

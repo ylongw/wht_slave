@@ -175,13 +175,27 @@ HAL_StatusTypeDef factory_test_send_data(const uint8_t* data, uint16_t length) {
  * @brief  Initialize factory test mode
  * @retval None
  */
+#ifndef WHT_APP_RUN_MODE
 extern uint8_t uart_rx_char;
+#elif WHT_APP_RUN_MODE != 6
+extern uint8_t uart_rx_char;
+#else
+// In exam mode, factory_test doesn't use uart_rx_char
+static uint8_t uart_rx_char_dummy;
+#define uart_rx_char uart_rx_char_dummy
+#endif
+
 void factory_test_init(void) {
     // set elog level to error
     elog_set_filter_tag_lvl(TAG, ELOG_LVL_ERROR);
 
+#ifndef WHT_APP_RUN_MODE
     RS485_RX_EN();
     HAL_UART_Receive_IT(&RS485_UART, &uart_rx_char, 1);
+#elif WHT_APP_RUN_MODE != 6
+    RS485_RX_EN();
+    HAL_UART_Receive_IT(&RS485_UART, &uart_rx_char, 1);
+#endif
 
     test_state = FACTORY_TEST_DISABLED;
     ring_buffer_reset();

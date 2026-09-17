@@ -161,6 +161,7 @@ void process_uart_command(char* command) {
  * @param  huart: UART handle
  * @retval None
  */
+#if !(defined(WHT_APP_RUN_MODE) && (WHT_APP_RUN_MODE == 6))
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
     if (huart->Instance == RS485_UART.Instance) {
         // 检查是否是工厂测试入口指令（仅在检测期间有效）
@@ -200,3 +201,4 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
         HAL_UART_Receive_IT(&RS485_UART, &uart_rx_char, 1);
     }
 }
+#endif  // !(defined(WHT_APP_RUN_MODE) && (WHT_APP_RUN_MODE == 6))

@@ -27,6 +27,7 @@
 
 /* Private defines -----------------------------------------------------------*/
 #define EXAM_CMD_BUFFER_SIZE    32
+#define LED_BLINK_INTERVAL_MS   500
 
 /* TTL UART (3.3V logic) - UART4 on PA0/PA1 */
 #define EXAM_TTL_UART           huart4      // DEBUG_UART, TTL levels
@@ -41,16 +42,16 @@
 /* Private variables ---------------------------------------------------------*/
 static char cmd_buffer_ttl[EXAM_CMD_BUFFER_SIZE];
 static uint8_t cmd_index_ttl = 0;
-static uint8_t uart_rx_byte_ttl = 0;
 
 static char cmd_buffer_rs232[EXAM_CMD_BUFFER_SIZE];
 static uint8_t cmd_index_rs232 = 0;
-static uint8_t uart_rx_byte_rs232 = 0;
+
+static uint32_t last_led_blink_tick = 0;
 
 /* Private function prototypes -----------------------------------------------*/
 static void exam_print_boot_message(void);
-static void exam_process_command_ttl(void);
-static void exam_process_command_rs232(void);
+static void exam_process_uart_rx(void);
+static int exam_check_for_ping(const char* buffer, uint8_t length);
 static void exam_uart_send_string(UART_HandleTypeDef *huart, const char* str);
 static void exam_configure_square_wave_timer(void);
 
@@ -78,9 +79,12 @@ void exam_instruments_init(void) {
     // Configure TIM2 for 1 kHz square wave
     exam_configure_square_wave_timer();
     
-    // Start UART receive interrupt for both UARTs
-    HAL_UART_Receive_IT(&EXAM_TTL_UART, &uart_rx_byte_ttl, 1);
-    HAL_UART_Receive_IT(&EXAM_RS232_UART, &uart_rx_byte_rs232, 1);
+    // Initialize LED blink timer
+    last_led_blink_tick = HAL_GetTick();
+    
+    // Initialize command buffers
+    memset(cmd_buffer_ttl, 0, sizeof(cmd_buffer_ttl));
+    memset(cmd_buffer_rs232, 0, sizeof(cmd_buffer_rs232));
 }
 
 /**
@@ -88,10 +92,17 @@ void exam_instruments_init(void) {
  * @retval None
  */
 void exam_instruments_run(void) {
-    // Main loop - just keep toggling the run LED slowly to show we're alive
+    // Main loop - tight polling for UART RX with LED blink on tick
     while (1) {
-        HAL_GPIO_TogglePin(RUN_LED_GPIO_Port, RUN_LED_Pin);
-        HAL_Delay(1000);
+        // Poll both UARTs for data
+        exam_process_uart_rx();
+        
+        // Blink RUN LED every 500ms
+        uint32_t current_tick = HAL_GetTick();
+        if (current_tick - last_led_blink_tick >= LED_BLINK_INTERVAL_MS) {
+            HAL_GPIO_TogglePin(RUN_LED_GPIO_Port, RUN_LED_Pin);
+            last_led_blink_tick = current_tick;
+        }
     }
 }
 
@@ -148,6 +159,107 @@ static void exam_print_boot_message(void) {
 }
 
 /**
+ * @brief  Poll both UARTs for received data and process commands
+ * @retval None
+ */
+static void exam_process_uart_rx(void) {
+    uint8_t rx_byte;
+    
+    // Check TTL UART (UART4) for data
+    if (__HAL_UART_GET_FLAG(&EXAM_TTL_UART, UART_FLAG_RXNE)) {
+        // Read byte from data register
+        rx_byte = (uint8_t)(EXAM_TTL_UART.Instance->DR & 0xFF);
+        
+        // Add to buffer if space available
+        if (cmd_index_ttl < EXAM_CMD_BUFFER_SIZE - 1) {
+            cmd_buffer_ttl[cmd_index_ttl++] = rx_byte;
+            
+            // Check if we have a complete PING command (with or without CR/LF)
+            if (exam_check_for_ping(cmd_buffer_ttl, cmd_index_ttl)) {
+                exam_uart_send_string(&EXAM_TTL_UART, "PONG\r\n");
+                cmd_index_ttl = 0;
+                memset(cmd_buffer_ttl, 0, sizeof(cmd_buffer_ttl));
+            }
+            // Also check for newline to reset buffer (non-PING commands)
+            else if (rx_byte == '\r' || rx_byte == '\n') {
+                cmd_index_ttl = 0;
+                memset(cmd_buffer_ttl, 0, sizeof(cmd_buffer_ttl));
+            }
+        } else {
+            // Buffer full, reset
+            cmd_index_ttl = 0;
+            memset(cmd_buffer_ttl, 0, sizeof(cmd_buffer_ttl));
+        }
+    }
+    
+    // Check RS-232 UART (USART1) for data
+    if (__HAL_UART_GET_FLAG(&EXAM_RS232_UART, UART_FLAG_RXNE)) {
+        // Read byte from data register
+        rx_byte = (uint8_t)(EXAM_RS232_UART.Instance->DR & 0xFF);
+        
+        // Add to buffer if space available
+        if (cmd_index_rs232 < EXAM_CMD_BUFFER_SIZE - 1) {
+            cmd_buffer_rs232[cmd_index_rs232++] = rx_byte;
+            
+            // Check if we have a complete PING command (with or without CR/LF)
+            if (exam_check_for_ping(cmd_buffer_rs232, cmd_index_rs232)) {
+                exam_uart_send_string(&EXAM_RS232_UART, "PONG\r\n");
+                cmd_index_rs232 = 0;
+                memset(cmd_buffer_rs232, 0, sizeof(cmd_buffer_rs232));
+            }
+            // Also check for newline to reset buffer (non-PING commands)
+            else if (rx_byte == '\r' || rx_byte == '\n') {
+                cmd_index_rs232 = 0;
+                memset(cmd_buffer_rs232, 0, sizeof(cmd_buffer_rs232));
+            }
+        } else {
+            // Buffer full, reset
+            cmd_index_rs232 = 0;
+            memset(cmd_buffer_rs232, 0, sizeof(cmd_buffer_rs232));
+        }
+    }
+}
+
+/**
+ * @brief  Check if buffer contains "PING" (case-insensitive, with or without trailing whitespace)
+ * @param  buffer: Command buffer to check
+ * @param  length: Current length of buffer
+ * @retval 1 if PING found, 0 otherwise
+ */
+static int exam_check_for_ping(const char* buffer, uint8_t length) {
+    // Need at least 4 characters for "PING"
+    if (length < 4) {
+        return 0;
+    }
+    
+    // Check if buffer ends with PING (or ping) - case insensitive
+    // Can be followed by nothing, spaces, CR, or LF
+    uint8_t ping_len = 0;
+    
+    // Find the last non-whitespace position
+    int last_char_pos = length - 1;
+    while (last_char_pos >= 0 && (buffer[last_char_pos] == ' ' || 
+                                   buffer[last_char_pos] == '\r' || 
+                                   buffer[last_char_pos] == '\n' ||
+                                   buffer[last_char_pos] == '\t')) {
+        last_char_pos--;
+    }
+    
+    // Check if we have exactly "PING" or "ping"
+    if (last_char_pos == 3) {
+        // Check all 4 characters (case insensitive)
+        if ((buffer[0] == 'P' || buffer[0] == 'p') &&
+            (buffer[1] == 'I' || buffer[1] == 'i') &&
+            (buffer[2] == 'N' || buffer[2] == 'n') &&
+            (buffer[3] == 'G' || buffer[3] == 'g')) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+/**
  * @brief  Send string over UART
  * @param  huart: UART handle
  * @param  str: Null-terminated string to send
@@ -155,56 +267,6 @@ static void exam_print_boot_message(void) {
  */
 static void exam_uart_send_string(UART_HandleTypeDef *huart, const char* str) {
     HAL_UART_Transmit(huart, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
-}
-
-/**
- * @brief  Process received command from TTL UART
- * @retval None
- */
-static void exam_process_command_ttl(void) {
-    // Null-terminate the command
-    cmd_buffer_ttl[cmd_index_ttl] = '\0';
-    
-    // Trim trailing CR/LF
-    while (cmd_index_ttl > 0 && (cmd_buffer_ttl[cmd_index_ttl - 1] == '\r' || 
-                                  cmd_buffer_ttl[cmd_index_ttl - 1] == '\n')) {
-        cmd_index_ttl--;
-        cmd_buffer_ttl[cmd_index_ttl] = '\0';
-    }
-    
-    // Check for PING command
-    if (strcmp(cmd_buffer_ttl, "PING") == 0 || strcmp(cmd_buffer_ttl, "ping") == 0) {
-        exam_uart_send_string(&EXAM_TTL_UART, "PONG\r\n");
-    }
-    
-    // Reset command buffer
-    cmd_index_ttl = 0;
-    memset(cmd_buffer_ttl, 0, sizeof(cmd_buffer_ttl));
-}
-
-/**
- * @brief  Process received command from RS-232 UART
- * @retval None
- */
-static void exam_process_command_rs232(void) {
-    // Null-terminate the command
-    cmd_buffer_rs232[cmd_index_rs232] = '\0';
-    
-    // Trim trailing CR/LF
-    while (cmd_index_rs232 > 0 && (cmd_buffer_rs232[cmd_index_rs232 - 1] == '\r' || 
-                                    cmd_buffer_rs232[cmd_index_rs232 - 1] == '\n')) {
-        cmd_index_rs232--;
-        cmd_buffer_rs232[cmd_index_rs232] = '\0';
-    }
-    
-    // Check for PING command
-    if (strcmp(cmd_buffer_rs232, "PING") == 0 || strcmp(cmd_buffer_rs232, "ping") == 0) {
-        exam_uart_send_string(&EXAM_RS232_UART, "PONG\r\n");
-    }
-    
-    // Reset command buffer
-    cmd_index_rs232 = 0;
-    memset(cmd_buffer_rs232, 0, sizeof(cmd_buffer_rs232));
 }
 
 /**
@@ -241,52 +303,3 @@ static void exam_configure_square_wave_timer(void) {
     // Start PWM output
     HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
 }
-
-/**
- * @brief  UART receive complete callback - Exam mode specific
- * @param  huart: UART handle
- * @retval None
- */
-#ifdef WHT_APP_RUN_MODE
-#if WHT_APP_RUN_MODE == 6
-
-// In exam mode, we override the callback completely
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-    // Handle TTL UART (UART4)
-    if (huart->Instance == EXAM_TTL_UART.Instance) {
-        if (cmd_index_ttl < EXAM_CMD_BUFFER_SIZE - 1) {
-            cmd_buffer_ttl[cmd_index_ttl++] = uart_rx_byte_ttl;
-            
-            // Check for command termination (CR or LF)
-            if (uart_rx_byte_ttl == '\r' || uart_rx_byte_ttl == '\n') {
-                exam_process_command_ttl();
-            }
-        } else {
-            // Buffer overflow, reset
-            cmd_index_ttl = 0;
-        }
-        
-        // Restart receive
-        HAL_UART_Receive_IT(&EXAM_TTL_UART, &uart_rx_byte_ttl, 1);
-    }
-    // Handle RS-232 UART (USART1)
-    else if (huart->Instance == EXAM_RS232_UART.Instance) {
-        if (cmd_index_rs232 < EXAM_CMD_BUFFER_SIZE - 1) {
-            cmd_buffer_rs232[cmd_index_rs232++] = uart_rx_byte_rs232;
-            
-            // Check for command termination (CR or LF)
-            if (uart_rx_byte_rs232 == '\r' || uart_rx_byte_rs232 == '\n') {
-                exam_process_command_rs232();
-            }
-        } else {
-            // Buffer overflow, reset
-            cmd_index_rs232 = 0;
-        }
-        
-        // Restart receive
-        HAL_UART_Receive_IT(&EXAM_RS232_UART, &uart_rx_byte_rs232, 1);
-    }
-}
-
-#endif
-#endif

@@ -9,7 +9,7 @@
 仪器考试固件是为实践考试场景设计的专用固件。它提供简单可靠的功能用于验证测试设备和连接：
 - 启动时通过**两个UART接口**同时输出启动消息
 - 在**TTL UART**和**RS-232**接口上响应PING命令返回PONG
-- 在LED1引脚(PG9)上持续输出1 kHz方波用于示波器测量
+- 在IO1引脚(PA3)上持续输出1 kHz方波用于示波器测量
 
 ### 预设名称
 
@@ -94,7 +94,7 @@ cmake --build build/Debug-EXAM-INSTRUMENTS --target install
 Version: EXAM-1.0.0
 Build: Jan 15 2025 10:23:45
 FW Ver: 1.2.3
-Square Wave: 1 kHz on LED1 (PG9)
+Square Wave: 1 kHz on IO1 (PA3)
 TTL UART: UART4 (PA0/PA1) 115200 8N1
 RS-232: USART1 (PA9/PA10) 115200 8N1
 Ready for commands (PING)
@@ -143,19 +143,19 @@ cat /dev/ttyUSB0
 
 ### 方波输出
 
-固件在 **LED1** 引脚 (PG9) 上持续输出1 kHz 50%占空比方波。
+固件在 **IO1** 测试点 (PA3) 上持续输出1 kHz 50%占空比方波。
 
 #### 引脚信息
 
-- **引脚**: PG9 (GPIO Port G, Pin 9)
-- **电路板标识**: LED1
+- **引脚**: PA3 (GPIO Port A, Pin 3)
+- **电路板标识**: IO1
 - **频率**: 1000 Hz (1 kHz)
 - **占空比**: 50%
 - **电压**: 0V (低) / 3.3V (高)
 
 #### 示波器测量
 
-使用示波器连接LED1引脚(PG9)，应该观察到：
+使用示波器连接IO1引脚(PA3)，应该观察到：
 - **频率**: 1 kHz (周期 = 1 ms)
 - **占空比**: 50% (高电平500 μs, 低电平500 μs)
 - **电压**: 在0V和3.3V之间切换
@@ -195,7 +195,7 @@ cat /dev/ttyUSB0
 - 尝试另一个UART接口
 
 #### 方波不正确
-- 使用示波器确认探头连接到PG9/LED1
+- 使用示波器确认探头连接到PA3/IO1
 - 检查探头接地
 - 确认示波器触发设置正确
 - 检查时基设置（应该能看到多个波形周期）
@@ -209,7 +209,7 @@ cat /dev/ttyUSB0
 The exam instruments firmware is a specialized build designed for practical examination scenarios. It provides simple, reliable functionality for verifying test equipment and connections:
 - Boot message output simultaneously on **two UART interfaces** at startup
 - PING/PONG command response on both **TTL UART** and **RS-232** interfaces
-- Continuous 1 kHz square wave output on LED1 pin (PG9) for oscilloscope measurement
+- Continuous 1 kHz square wave output on IO1 pin (PA3) for oscilloscope measurement
 
 ### Preset Name
 
@@ -294,7 +294,7 @@ On power-up, the device outputs the following boot message **simultaneously on b
 Version: EXAM-1.0.0
 Build: Jan 15 2025 10:23:45
 FW Ver: 1.2.3
-Square Wave: 1 kHz on LED1 (PG9)
+Square Wave: 1 kHz on IO1 (PA3)
 TTL UART: UART4 (PA0/PA1) 115200 8N1
 RS-232: USART1 (PA9/PA10) 115200 8N1
 Ready for commands (PING)
@@ -343,19 +343,19 @@ Use a serial terminal like PuTTY, TeraTerm, or Realterm:
 
 ### Square Wave Output
 
-The firmware continuously outputs a 1 kHz, 50% duty cycle square wave on the **LED1** pin (PG9).
+The firmware continuously outputs a 1 kHz, 50% duty cycle square wave on the **IO1** test point (PA3).
 
 #### Pin Information
 
-- **Pin**: PG9 (GPIO Port G, Pin 9)
-- **Board Label**: LED1
+- **Pin**: PA3 (GPIO Port A, Pin 3)
+- **Board Label**: IO1
 - **Frequency**: 1000 Hz (1 kHz)
 - **Duty Cycle**: 50%
 - **Voltage Levels**: 0V (Low) / 3.3V (High)
 
 #### Oscilloscope Measurement
 
-Connect an oscilloscope probe to the LED1 pin (PG9). You should observe:
+Connect an oscilloscope probe to the IO1 pin (PA3). You should observe:
 - **Frequency**: 1 kHz (Period = 1 ms)
 - **Duty Cycle**: 50% (High for 500 μs, Low for 500 μs)
 - **Voltage**: Switching between 0V and 3.3V
@@ -395,7 +395,7 @@ Recommended oscilloscope settings:
 - Try the other UART interface
 
 #### Incorrect Square Wave
-- Use oscilloscope to confirm probe is on PG9/LED1
+- Use oscilloscope to confirm probe is on PA3/IO1
 - Check probe ground connection
 - Verify oscilloscope trigger settings
 - Check time base setting (should see multiple cycles)
@@ -429,12 +429,12 @@ The project has three UART peripherals, the exam firmware uses two of them:
 
 ### GPIO Configuration
 
-方波使用TIM2通道2(TIM2_CH2)生成，该通道复用映射到PG9引脚。定时器配置为：
+方波使用TIM2通道4(TIM2_CH4)生成，该通道复用映射到PA3引脚。定时器配置为：
 - 预分频器: 89 (90 MHz / 90 = 1 MHz定时器时钟)
 - 自动重载: 999 (1 MHz / 1000 = 1 kHz PWM)
 - 脉冲值: 500 (50%占空比)
 
-The square wave is generated using TIM2 Channel 2 (TIM2_CH2), which is mapped to pin PG9 via alternate function. Timer configuration:
+The square wave is generated using TIM2 Channel 4 (TIM2_CH4), which is mapped to pin PA3 via alternate function. Timer configuration:
 - Prescaler: 89 (90 MHz / 90 = 1 MHz timer clock)
 - Auto-reload: 999 (1 MHz / 1000 = 1 kHz PWM)
 - Pulse value: 500 (50% duty cycle)

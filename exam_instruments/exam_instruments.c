@@ -35,9 +35,9 @@
 /* RS-232 UART - USART1 on PA9/PA10 */
 #define EXAM_RS232_UART         huart1      // RS-232 levels
 
-/* Square wave output pin - using LED1 (PG9) which is easily accessible */
-#define EXAM_SQUARE_WAVE_PORT   GPIOG
-#define EXAM_SQUARE_WAVE_PIN    GPIO_PIN_9
+/* Square wave output pin - using IO1 (PA3) test point */
+#define EXAM_SQUARE_WAVE_PORT   IO1_GPIO_Port
+#define EXAM_SQUARE_WAVE_PIN    IO1_Pin
 
 /* Private variables ---------------------------------------------------------*/
 static char cmd_buffer_ttl[EXAM_CMD_BUFFER_SIZE];
@@ -67,13 +67,13 @@ void exam_instruments_init(void) {
     
     // Configure square wave output GPIO
     GPIO_InitTypeDef GPIO_InitStruct = {0};
-    __HAL_RCC_GPIOG_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
     
     GPIO_InitStruct.Pin = EXAM_SQUARE_WAVE_PIN;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;  // TIM2_CH2 on PG9
+    GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;  // TIM2_CH4 on PA3
     HAL_GPIO_Init(EXAM_SQUARE_WAVE_PORT, &GPIO_InitStruct);
     
     // Configure TIM2 for 1 kHz square wave
@@ -137,7 +137,7 @@ static void exam_print_boot_message(void) {
     exam_uart_send_string(&EXAM_RS232_UART, msg);
     HAL_Delay(5);
     
-    snprintf(msg, sizeof(msg), "Square Wave: 1 kHz on LED1 (PG9)\r\n");
+    snprintf(msg, sizeof(msg), "Square Wave: 1 kHz on IO1 (PA3)\r\n");
     exam_uart_send_string(&EXAM_TTL_UART, msg);
     exam_uart_send_string(&EXAM_RS232_UART, msg);
     HAL_Delay(5);
@@ -270,7 +270,7 @@ static void exam_uart_send_string(UART_HandleTypeDef *huart, const char* str) {
 }
 
 /**
- * @brief  Configure TIM2 for 1 kHz 50% duty cycle square wave on PG9
+ * @brief  Configure TIM2 for 1 kHz 50% duty cycle square wave on PA3
  * @retval None
  */
 static void exam_configure_square_wave_timer(void) {
@@ -290,16 +290,16 @@ static void exam_configure_square_wave_timer(void) {
         Error_Handler();
     }
     
-    // Configure PWM channel 2 (TIM2_CH2 = PG9 = LED1)
+    // Configure PWM channel 4 (TIM2_CH4 = PA3 = IO1)
     sConfigOC.OCMode = TIM_OCMODE_PWM1;
     sConfigOC.Pulse = 500;                   // 50% duty cycle
     sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
     sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
     
-    if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4) != HAL_OK) {
         Error_Handler();
     }
     
     // Start PWM output
-    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
 }

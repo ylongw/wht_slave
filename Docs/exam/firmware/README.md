@@ -52,7 +52,7 @@ JLinkExe -device STM32F429ZI -if SWD -speed 4000 -CommanderScript flash.jlink
 
 - **TTL UART** (UART4, PA0/PA1): 115200 8N1, 3.3V logic
 - **RS-232** (USART1, PA9/PA10): 115200 8N1, ±12V levels
-- **Square Wave**: 1 kHz 50% on LED1 (PG9)
+- **Square Wave**: 1 kHz 50% on IO1 (PA3)
 - **Boot Message**: Includes version and configuration
 - **PING/PONG**: Simple connectivity test on both UARTs
 
